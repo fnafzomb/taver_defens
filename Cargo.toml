@@ -1,0 +1,17 @@
+[package]
+name = "taver_defens"
+version = "0.0.1"
+edition = "2024"
+
+[dependencies]
+bevy = "0.19.0"
+rand = "0.10.2"
+
+# Enable a small amount of optimization in the dev profile.
+[profile.dev]
+opt-level = 1
+
+# Enable a large amount of optimization in the dev profile for dependencies.
+[profile.dev.package."*"]
+opt-level = 3
+
