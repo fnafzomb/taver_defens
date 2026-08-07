@@ -1,5 +1,5 @@
 
-use bevy::{prelude::*};
+use bevy::{ecs::system::command::insert_resource, input::gamepad::GamepadButton::Z, prelude::*, render::view::RetainedViewEntity};
 use rand::{RngExt, rng};
 
 fn main() {
@@ -12,8 +12,18 @@ fn main() {
             noraml: 0,
             toxick: 0,
             fat: 0,
-        },
-        )
+        })
+        .insert_resource(ThreateLevel{
+            level: 1,
+            killed: 0,
+            need_killed: 30,
+            upgrade_cost: 100.0,
+        })
+        .insert_resource(SpawnLimit{
+            normal_max: 5,
+            toxick_max: 5,
+            fat_max: 5,
+        })
         .add_systems(Startup, (
             camera_game, 
             fon_game, 
@@ -22,6 +32,7 @@ fn main() {
         ))
         .add_systems(Update, (
             economics,
+            zombie_statistic,
             // hp_base,
             // hp_player,
             // hp_monster,
@@ -29,7 +40,8 @@ fn main() {
             death_base,
             death_player,
             death_zombie,
-            // hp_monster_logic,
+            level_up,
+            hp_monster_logic,
             setup_monster_zombie,
             setup_monster_toxick_zombie,
             setup_monster_fat_zombie,
@@ -45,6 +57,23 @@ struct ZombieCount{
     toxick: u32,
     fat:  u32,
 }
+// Компонент уровня
+
+#[derive(Resource)]
+struct ThreateLevel{
+    level: u32,
+    killed: u32,
+    need_killed: u32,
+    upgrade_cost: f32,
+}
+// Компаненты максимального спавна
+#[derive(Resource)]
+struct SpawnLimit{
+    normal_max: u32,
+    toxick_max: u32,
+    fat_max: u32,
+}
+
 
 #[derive(Component)]
 enum ZombiType {
@@ -69,7 +98,10 @@ struct Damage{
 struct Money{
     money: f32
 }
-
+#[derive(Component)]
+struct Reward{
+    money: f32,
+}
 // Компаненты обьектов
 
 #[derive(Component)]
@@ -107,6 +139,7 @@ fn fon_game(mut commands: Commands){
 // база
 fn command_center(
     mut commands: Commands,
+    
 ){
     commands.spawn((
         Base,
@@ -121,6 +154,37 @@ fn command_center(
         Transform::from_xyz(-500.0, -20.0, 1.0)
     ));
 }
+
+fn zombie_statistic(
+    count: Res<ZombieCount>,
+){
+    println!(
+        "Зомби на карте: обычных {}, токсичных {}, толстых {} | всего {}",
+        count.noraml,
+        count.toxick,
+        count.fat,
+        count.noraml + count.toxick + count.fat
+    );
+}
+// Логика прокачки
+fn level_up(
+    mut level: ResMut<ThreateLevel>,
+    mut money: ResMut<Money>,
+    mut spawn_limit: ResMut<SpawnLimit>,
+){
+    if level.killed >= level.need_killed && money.money >= level.upgrade_cost{
+        level.level += 1;
+        level.killed = 0;
+        level.need_killed = (level.need_killed as f32 * 1.5) as u32;
+        money.money -= level.upgrade_cost;
+        level.upgrade_cost *= 1.8;
+        spawn_limit.normal_max += 5;
+        spawn_limit.toxick_max += 5;
+        spawn_limit.fat_max += 5;
+        println!("Уровень угрозы повышен до {}", level.level);
+    }
+}
+
 //создание игрока
 fn player_entety(
     mut commands: Commands,
@@ -141,12 +205,18 @@ fn player_entety(
         Transform::from_xyz(-420.0, -40.0, 1.0)
     ));
 }
+
+
+
 //Проэктирование зомби
 fn setup_monster_zombie(
     mut commands: Commands,
+    mut zombie_count: ResMut<ZombieCount>,
+    limit: Res<SpawnLimit>,
 ){
     let mut rng = rng();
     let y = rng.random_range(-80.0..80.0);
+    if zombie_count.noraml < limit.normal_max{
     commands.spawn((
         Monster{
             speed: 10.0,
@@ -163,17 +233,27 @@ fn setup_monster_zombie(
             Vec2 ::new(20.0,80.0),
         ),
         Transform::from_xyz(800.0, y, 1.0),
+        Reward{
+            money: 9.0,
+        }
     ));
+    }
+    if zombie_count.noraml >= limit.normal_max{
+        return;
+    }
+    zombie_count.noraml += 1;
     println!("Зомби появился на координатах: y = {}", y);
 }
 
 //Проэктирование токсичного зомби
 fn setup_monster_toxick_zombie(
     mut commands: Commands,
+    mut zombie_count: ResMut<ZombieCount>,
+    limit: Res<SpawnLimit>
 ){
-    
     let mut rng = rng();
     let y = rng.random_range(-80.0..80.0);
+    if zombie_count.toxick < limit.toxick_max{
     commands.spawn((
         Monster{
             speed: 12.0,
@@ -190,7 +270,15 @@ fn setup_monster_toxick_zombie(
             Vec2 ::new(20.0,60.0),
         ),
         Transform::from_xyz(800.0, y, 1.0),
+        Reward{
+            money: 13.0,
+        }
     ));
+    }
+    if zombie_count.toxick >= limit.toxick_max{
+        return;
+    }
+    zombie_count.toxick += 1;
     println!("Токсичный зомби появился на координатах: y = {}", y);
 }
 
@@ -198,10 +286,13 @@ fn setup_monster_toxick_zombie(
 
 //Проэктирование  толстого зомби
 fn setup_monster_fat_zombie(
-    mut commands: Commands
+    mut commands: Commands,
+    mut zombie_count: ResMut<ZombieCount>,
+    limit: Res<SpawnLimit>
 ){
     let mut rng = rng();
     let y = rng.random_range(-80.0..80.0);
+    if zombie_count.fat < limit.fat_max{
     commands.spawn((
         Monster{
             speed: 3.0,
@@ -218,7 +309,15 @@ fn setup_monster_fat_zombie(
             Vec2 ::new(20.0,60.0),
         ),
         Transform::from_xyz(800.0, y, 1.0),   
+        Reward{
+            money: 50.0,
+        }
     ));
+    }
+    if zombie_count.fat >= limit.fat_max{
+        return;
+    }
+    zombie_count.fat += 1;
     println!("Толстый зомби появился на координатах: y = {}", y);
 }
 
@@ -233,17 +332,17 @@ fn move_zombie(
 }
 
 // Логика нанесение урона зомби
-// fn hp_monster_logic(
-//     player_query: Query<&Damage, With<Player>>,
-//     mut monster_query: Query<&mut Hp, With<Monster>>,
-// ) {
-//     let damage = player_query.single().unwrap().damage;
+fn hp_monster_logic(
+    player_query: Query<&Damage, With<Player>>,
+    mut monster_query: Query<&mut Hp, With<Monster>>,
+) {
+    let damage = player_query.single().unwrap().damage;
 
-//     for mut hp in monster_query.iter_mut() {
-//         hp.hp -= damage;
-//         println!("Зомби получил урон, осталось {}", hp.hp);
-//     }
-// }
+    for mut hp in monster_query.iter_mut() {
+        hp.hp -= damage;
+        println!("Зомби получил урон, осталось {}", hp.hp);
+    }
+}
 
 
 
@@ -273,13 +372,31 @@ fn death_player(
 }
 
 fn death_zombie (
-    query : Query<(Entity, &Hp), With<Monster>>,
-    mut commands: Commands
+    query : Query<(Entity, &Hp, &Reward, &ZombiType), With<Monster>>,
+    mut commands: Commands,
+    mut money: ResMut<Money>,
+    mut level: ResMut<ThreateLevel>,
+    mut zombie_count: ResMut<ZombieCount>,
 ){
-    for (entity, hp) in  query.iter(){
+    for (entity, hp, reward, zombie_type) in  query.iter(){
         if hp.hp <= 0.0{
+            match zombie_type {
+                ZombiType::Normal =>{
+                    zombie_count.noraml -= 1;
+                },
+                ZombiType::Toxick =>{
+                    zombie_count.toxick -= 1;
+                },
+                ZombiType::Fat => {
+                    zombie_count.fat -= 1;
+                }
+            } 
+            if hp.hp <= 0.0{}
             commands.entity(entity).despawn();
-            println!("Зомби умер")
+            println!("Зомби умер");           
+            money.money += reward.money;
+            level.killed += 1;
+            
         }
     }
 }
