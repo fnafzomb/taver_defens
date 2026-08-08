@@ -66,9 +66,12 @@ pub struct Reward{
 pub struct Player;
 
 #[derive(Component)]
-pub struct Monster {
+pub struct Speed{
     pub speed: f32,
 }
+
+#[derive(Component)]
+pub struct Monster;
 
 #[derive(Component)]
 pub struct Base;
