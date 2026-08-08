@@ -27,39 +27,42 @@ fn main() {
             toxick_max: 5,
             fat_max: 5,
         })
-        .add_systems(Startup, (
-           
+        .add_systems(Startup, (     
             camera_game, 
             fon_game, 
             command_center, 
-            player_entety, 
+            player_entety, spawn_all_zombie,
         ))
         .add_systems(Update, (
-            zombie_statistic,
+            zombie_statistic, 
+            
+            death_entity,
             move_zombie,
-            death_base,
-            death_player,
-            death_zombie,
-            level_up, spawn_all_zombie,
+            level_up, 
             attack_player,
-            // hp_monster_logic,
+            collision_geschoss_zombie,
         ))
         .run();
 }
 
 //камера
-fn camera_game(mut commands: Commands){
+fn camera_game(
+    mut commands: Commands
+){
     commands.spawn((
         MainCamera,
         Camera2d
     ));
 }
+
 //фон 
-fn fon_game(mut commands: Commands){
+fn fon_game(
+    mut commands: Commands
+){
     commands.spawn((
         Sprite::from_color(
             Color::srgb(0.3, 0.4, 0.1),
-            Vec2::new  (100.0, 100.0),        
+            Vec2::new  (2000.0, 1000.0),        
         ),
         Transform::from_xyz(0.0,0.0, 0.1)
     ));
@@ -95,6 +98,7 @@ fn zombie_statistic(
         count.noraml + count.toxick + count.fat
     );
 }
+
 // Логика прокачки
 fn level_up(
     mut level: ResMut<ThreateLevel>,
@@ -117,12 +121,17 @@ fn level_up(
 //создание снаряда
 fn geschoss(
     commands: &mut Commands,
-    player_transform: &Transform
+    player_transform: &Transform,
+    damage:f32,
 ){
     commands.spawn((
         Geschoss,
+        Damage{ damage },
+        Speed{
+            speed: 200.0
+        },
         Hitbox{
-            y: 100.0,
+            y: 1000.0,
             x: 10.0
         },
         Sprite::from_color(
@@ -161,12 +170,12 @@ fn player_entety(
 fn attack_player(
     mouse: Res<ButtonInput<MouseButton>>,
     mut commands: Commands,
-    player_query: Query<&Transform, With<Player>>,
+    player_query: Query<(&Transform, &Damage), With<Player>>,
 ) {
     if mouse.just_pressed(MouseButton::Left) {
-        let player_transform = player_query.single().unwrap();
+        let (player_transform, damage) = player_query.single().unwrap();
 
-        geschoss(&mut commands, player_transform);
+        geschoss(&mut commands, player_transform, damage.damage);
     }
 }
 
@@ -176,9 +185,11 @@ fn setup_monster_zombie(
     commands: &mut Commands,
     zombie_count: &mut ZombieCount,
 ){
-    let (monster, damage, hp,  reward,color, size, zombie) = match zombi_type{
+    let (monster, hitbox, speed, damage, hp,  reward,color, size, zombie) = match zombi_type{
         ZombiType::Normal =>(
-            Monster{speed: 10.0},
+            Monster,
+            Hitbox{x:40.0,y:80.0},
+            Speed{speed:-10.0},
             Damage{damage:8.0},
             Hp{max_hp:50.0, hp:50.0},
             Reward{money:10.0},
@@ -187,7 +198,9 @@ fn setup_monster_zombie(
             zombie_count.noraml += 1,
         ),
         ZombiType::Toxick => (
-            Monster{speed: 15.0},
+            Monster,
+            Hitbox{x:40.0,y:75.0},
+            Speed{speed:-15.0},
             Damage{damage:11.0},
             Hp{max_hp:40.0,hp:40.0},
             Reward{money:12.0},
@@ -196,7 +209,9 @@ fn setup_monster_zombie(
             zombie_count.toxick += 1,
         ),
         ZombiType::Fat =>(
-            Monster{speed:3.0},
+            Monster,
+            Hitbox{x:60.0,y:78.0},
+            Speed{speed:-3.0},
             Damage{damage:50.0},
             Hp{max_hp:200.0,hp:200.0},
             Reward{money:50.0},
@@ -209,6 +224,8 @@ fn setup_monster_zombie(
     commands.spawn((
         zombi_type,
         monster,
+        hitbox,
+        speed,
         damage,
         hp,
         reward,
@@ -233,82 +250,61 @@ fn spawn_all_zombie(
     setup_monster_zombie(ZombiType::Toxick, &mut commands, &mut zombie_count);
     setup_monster_zombie(ZombiType::Fat, &mut commands, &mut zombie_count);
 }
+
 // Логика передвижение
 fn move_zombie(
     time : Res<Time>,
-    mut query : Query<(&mut Transform, &Monster)>
+    mut query : Query<(&mut Transform, &Speed)>
 ){
-    for (mut transform, monster) in  query.iter_mut(){
-        transform.translation.x -= monster.speed *  time.delta_secs();
+    for (mut transform, speed) in  query.iter_mut(){
+        transform.translation.x += speed.speed *  time.delta_secs();
     }
 }
+// Логика попадние
+fn collision_geschoss_zombie(
+    mut commands: Commands,
+    mut query : Query<(&mut Hp, &Hitbox, &Transform), With<Monster>>,
+    geschoss: Query<(Entity, &Hitbox, &Transform, &Damage), With<Geschoss>>,
+){
+    for (geschoss_entity, geschoss_hitbox, geschoss_transform, damage) in geschoss.iter() {
+        for (mut hp, zombie_hitbox, zombie_transform) in query.iter_mut() {
 
-// Логика нанесение урона зомби
-// fn hp_monster_logic(
-//     player_query: Query<&Damage, With<Player>>,
-//     mut monster_query: Query<&mut Hp, With<Monster>>,
-// ) {
-//     let damage = player_query.single().unwrap().damage;
+            let x_distance =
+                (geschoss_transform.translation.x - zombie_transform.translation.x).abs();
 
-//     for mut hp in monster_query.iter_mut() {
-//         hp.hp -= damage;
-//         println!("Зомби получил урон, осталось {}", hp.hp);
-//     }
-// }
+            let y_distance =
+                (geschoss_transform.translation.y - zombie_transform.translation.y).abs();
 
-
+            if x_distance < (geschoss_hitbox.x + zombie_hitbox.x) / 2.0
+                && y_distance < (geschoss_hitbox.y + zombie_hitbox.y) / 2.0
+            {
+                hp.hp -= damage.damage;
+                println!("HP зомби: {}", hp.hp);
+                commands.entity(geschoss_entity).despawn();
+                break;
+            }
+        }
+    }
+}
 
 // Логика смерти
-fn death_base(
-    query : Query<(Entity, &Hp), With<Base>>,
-    mut commands: Commands
-){
-    for (entity, hp) in query.iter() {
-        if hp.hp <= 0.0{
-            commands.entity(entity).despawn();
-            println!("База уничтожена")
-        }
-    }
-}
-
-fn death_player(
-    query : Query<(Entity, &Hp), With<Player>>,
-    mut commands: Commands
-){
-    for (entity, hp) in query.iter() {
-        if hp.hp <= 0.0{
-            commands.entity(entity).despawn();
-            println!("Игрок  умер")
-        }
-    }
-}
-
-fn death_zombie (
-    query : Query<(Entity, &Hp, &Reward, &ZombiType), With<Monster>>,
+fn death_entity(
     mut commands: Commands,
-    mut money: ResMut<Money>,
-    mut level: ResMut<ThreateLevel>,
     mut zombie_count: ResMut<ZombieCount>,
-){
-    for (entity, hp, reward, zombie_type) in  query.iter(){
-        if hp.hp <= 0.0{
+    mut threat_level: ResMut<ThreateLevel>,
+    query: Query<(Entity, &Hp, &ZombiType), With<Monster>>,
+) {
+    for (entity, hp, zombie_type) in query.iter() {
+        if hp.hp <= 0.0 {
             match zombie_type {
-                ZombiType::Normal =>{
-                    zombie_count.noraml -= 1;
-                },
-                ZombiType::Toxick =>{
-                    zombie_count.toxick -= 1;
-                },
-                ZombiType::Fat => {
-                    zombie_count.fat -= 1;
-                }
-            } 
-            if hp.hp <= 0.0{}
+                ZombiType::Normal => zombie_count.noraml -= 1,
+                ZombiType::Toxick => zombie_count.toxick -= 1,
+                ZombiType::Fat => zombie_count.fat -= 1,
+            }
+
+            threat_level.killed += 1;
+
             commands.entity(entity).despawn();
-            println!("Зомби умер");           
-            money.money += reward.money;
-            level.killed += 1;
-            
         }
     }
 }
