@@ -1,6 +1,9 @@
 
-use bevy::{ecs::system::command::insert_resource, input::gamepad::GamepadButton::Z, prelude::*, render::view::RetainedViewEntity};
+use bevy::{prelude::*};
 use rand::{RngExt, rng};
+use component::*;
+
+mod component;
 
 fn main() {
     App::new()
@@ -25,98 +28,24 @@ fn main() {
             fat_max: 5,
         })
         .add_systems(Startup, (
+           
             camera_game, 
             fon_game, 
             command_center, 
             player_entety, 
         ))
         .add_systems(Update, (
-            economics,
             zombie_statistic,
-            // hp_base,
-            // hp_player,
-            // hp_monster,
             move_zombie,
             death_base,
             death_player,
             death_zombie,
-            level_up,
-            hp_monster_logic,
-            setup_monster_zombie,
-            setup_monster_toxick_zombie,
-            setup_monster_fat_zombie,
+            level_up, spawn_all_zombie,
+            attack_player,
+            // hp_monster_logic,
         ))
         .run();
 }
-
-
-// Компоненты зомби
-#[derive(Resource)]
-struct ZombieCount{
-    noraml: u32,
-    toxick: u32,
-    fat:  u32,
-}
-// Компонент уровня
-
-#[derive(Resource)]
-struct ThreateLevel{
-    level: u32,
-    killed: u32,
-    need_killed: u32,
-    upgrade_cost: f32,
-}
-// Компаненты максимального спавна
-#[derive(Resource)]
-struct SpawnLimit{
-    normal_max: u32,
-    toxick_max: u32,
-    fat_max: u32,
-}
-
-
-#[derive(Component)]
-enum ZombiType {
-    Normal,
-    Toxick,
-    Fat,
-}
-// Компоненты хп и домага
-
-
-#[derive(Component)]
-struct Hp {
-    max_hp: f32,
-    hp: f32
-}
-#[derive(Component)]
-struct Damage{
-    damage: f32
-}
-// Деньги
-#[derive(Resource)]
-struct Money{
-    money: f32
-}
-#[derive(Component)]
-struct Reward{
-    money: f32,
-}
-// Компаненты обьектов
-
-#[derive(Component)]
-struct Player;
-
-#[derive(Component)]
-struct Monster {
-    speed: f32,
-}
-
-#[derive(Component)]
-struct Base;
-
-#[derive(Component)]
-struct MainCamera;
 
 //камера
 fn camera_game(mut commands: Commands){
@@ -185,6 +114,28 @@ fn level_up(
     }
 }
 
+//создание снаряда
+fn geschoss(
+    commands: &mut Commands,
+    player_transform: &Transform
+){
+    commands.spawn((
+        Geschoss,
+        Hitbox{
+            y: 100.0,
+            x: 10.0
+        },
+        Sprite::from_color(
+            Color::srgb(0.0, 0.0 , 0.0), 
+            Vec2::new(10.0, 5.0)),
+        Transform::from_xyz(
+            player_transform.translation.x,
+            player_transform.translation.y,
+            2.9,
+        ),
+    ));
+}
+
 //создание игрока
 fn player_entety(
     mut commands: Commands,
@@ -206,121 +157,82 @@ fn player_entety(
     ));
 }
 
+//Создание аттаки
+fn attack_player(
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut commands: Commands,
+    player_query: Query<&Transform, With<Player>>,
+) {
+    if mouse.just_pressed(MouseButton::Left) {
+        let player_transform = player_query.single().unwrap();
 
+        geschoss(&mut commands, player_transform);
+    }
+}
 
 //Проэктирование зомби
 fn setup_monster_zombie(
-    mut commands: Commands,
-    mut zombie_count: ResMut<ZombieCount>,
-    limit: Res<SpawnLimit>,
+    zombi_type: ZombiType,
+    commands: &mut Commands,
+    zombie_count: &mut ZombieCount,
 ){
-    let mut rng = rng();
-    let y = rng.random_range(-80.0..80.0);
-    if zombie_count.noraml < limit.normal_max{
-    commands.spawn((
-        Monster{
-            speed: 10.0,
-        },
-        Damage{
-            damage: 9.0,
-        },
-        Hp{
-            max_hp: 50.0,
-            hp: 50.0
-        },
-        Sprite::from_color(
-            Color::srgb(0.18, 0.19, 0.13),
-            Vec2 ::new(20.0,80.0),
+    let (monster, damage, hp,  reward,color, size, zombie) = match zombi_type{
+        ZombiType::Normal =>(
+            Monster{speed: 10.0},
+            Damage{damage:8.0},
+            Hp{max_hp:50.0, hp:50.0},
+            Reward{money:10.0},
+            Color::srgb(0.2, 0.8, 0.2),
+            Vec2::new(40.0, 80.0),
+            zombie_count.noraml += 1,
         ),
-        Transform::from_xyz(800.0, y, 1.0),
-        Reward{
-            money: 9.0,
-        }
+        ZombiType::Toxick => (
+            Monster{speed: 15.0},
+            Damage{damage:11.0},
+            Hp{max_hp:40.0,hp:40.0},
+            Reward{money:12.0},
+            Color::srgb(0.7, 0.2, 0.8),
+            Vec2::new(40.0, 75.0),
+            zombie_count.toxick += 1,
+        ),
+        ZombiType::Fat =>(
+            Monster{speed:3.0},
+            Damage{damage:50.0},
+            Hp{max_hp:200.0,hp:200.0},
+            Reward{money:50.0},
+            Color::srgb(0.6, 0.4, 0.2),
+            Vec2::new(60.0,78.0),
+            zombie_count.fat += 1,
+        ),
+        
+    };
+    commands.spawn((
+        zombi_type,
+        monster,
+        damage,
+        hp,
+        reward,
+        Sprite::from_color(
+            color,
+            size,
+        ),
+        Transform:: from_xyz(
+            800.0,
+            rng().random_range(-100.0..100.0),
+            1.0
+        ),
+        zombie,
     ));
-    }
-    if zombie_count.noraml >= limit.normal_max{
-        return;
-    }
-    zombie_count.noraml += 1;
-    println!("Зомби появился на координатах: y = {}", y);
 }
 
-//Проэктирование токсичного зомби
-fn setup_monster_toxick_zombie(
+fn spawn_all_zombie(
     mut commands: Commands,
-    mut zombie_count: ResMut<ZombieCount>,
-    limit: Res<SpawnLimit>
+    mut zombie_count : ResMut<ZombieCount>,
 ){
-    let mut rng = rng();
-    let y = rng.random_range(-80.0..80.0);
-    if zombie_count.toxick < limit.toxick_max{
-    commands.spawn((
-        Monster{
-            speed: 12.0,
-        },
-        Damage{
-            damage: 9.0,
-        },
-        Hp{
-            max_hp: 40.0,
-            hp: 40.0
-        },
-        Sprite::from_color(
-            Color::srgb(0.11, 0.08, 0.02),
-            Vec2 ::new(20.0,60.0),
-        ),
-        Transform::from_xyz(800.0, y, 1.0),
-        Reward{
-            money: 13.0,
-        }
-    ));
-    }
-    if zombie_count.toxick >= limit.toxick_max{
-        return;
-    }
-    zombie_count.toxick += 1;
-    println!("Токсичный зомби появился на координатах: y = {}", y);
+    setup_monster_zombie(ZombiType::Normal, &mut commands, &mut zombie_count);
+    setup_monster_zombie(ZombiType::Toxick, &mut commands, &mut zombie_count);
+    setup_monster_zombie(ZombiType::Fat, &mut commands, &mut zombie_count);
 }
-
-
-
-//Проэктирование  толстого зомби
-fn setup_monster_fat_zombie(
-    mut commands: Commands,
-    mut zombie_count: ResMut<ZombieCount>,
-    limit: Res<SpawnLimit>
-){
-    let mut rng = rng();
-    let y = rng.random_range(-80.0..80.0);
-    if zombie_count.fat < limit.fat_max{
-    commands.spawn((
-        Monster{
-            speed: 3.0,
-        },
-        Damage{
-            damage: 53.0,
-        },
-        Hp{
-            max_hp: 250.0,
-            hp: 250.0
-        },
-        Sprite::from_color(
-            Color::srgb(0.21, 0.38, 0.92),
-            Vec2 ::new(20.0,60.0),
-        ),
-        Transform::from_xyz(800.0, y, 1.0),   
-        Reward{
-            money: 50.0,
-        }
-    ));
-    }
-    if zombie_count.fat >= limit.fat_max{
-        return;
-    }
-    zombie_count.fat += 1;
-    println!("Толстый зомби появился на координатах: y = {}", y);
-}
-
 // Логика передвижение
 fn move_zombie(
     time : Res<Time>,
@@ -332,17 +244,17 @@ fn move_zombie(
 }
 
 // Логика нанесение урона зомби
-fn hp_monster_logic(
-    player_query: Query<&Damage, With<Player>>,
-    mut monster_query: Query<&mut Hp, With<Monster>>,
-) {
-    let damage = player_query.single().unwrap().damage;
+// fn hp_monster_logic(
+//     player_query: Query<&Damage, With<Player>>,
+//     mut monster_query: Query<&mut Hp, With<Monster>>,
+// ) {
+//     let damage = player_query.single().unwrap().damage;
 
-    for mut hp in monster_query.iter_mut() {
-        hp.hp -= damage;
-        println!("Зомби получил урон, осталось {}", hp.hp);
-    }
-}
+//     for mut hp in monster_query.iter_mut() {
+//         hp.hp -= damage;
+//         println!("Зомби получил урон, осталось {}", hp.hp);
+//     }
+// }
 
 
 
@@ -399,73 +311,4 @@ fn death_zombie (
             
         }
     }
-}
-
-
-
-// логика урона 
-fn damage_base(
-    damge_queru: Query<&mut Hp, (With<Base>, )>,
-){
-
-}   
-
-fn damage_player(
-
-){
-
-}
-
-fn damage_monster(
-
-){
-
-}
-
-// Проверка хп
-// Changed  -  реагирует только на изменение компанента
-// fn hp_base (
-//     query: Query<&Hp, (With<Base>,Changed<Hp>)>,
-// ){
-//     for hp in query.iter(){
-//         if hp.hp <= 0.0 {
-//             println!("уничтожена")
-//         } else {
-//             println!("получен урон: {}",  hp.hp)
-//         }
-//     }
-// }
-
-// fn hp_player(
-//     query: Query<&Hp, (With<Player>,Changed<Hp>)>
-// ){
-//     for hp in query.iter(){
-//         if hp.hp <= 0.0 {
-//             println!("Мёртв")
-//         } else {
-//             println!("получен урон{}",  hp.hp)
-//         }
-//     }
-// }
-
-// fn hp_monster (
-//     query: Query<&Hp, (With<Monster>,Changed<Hp>)>
-// ){
-//     for hp in query.iter() {
-//         if hp.hp <= 0.0 {
-//             println!("Мёртв")
-//         } else {
-//             println!("получен урон{}", hp.hp)
-//         }
-//     }
-// }
-
-
-
-// Эканомика
-fn economics(
-   mut  economy: ResMut<Money>, 
-){ 
-    // economy.money += 1.0;
-    // println!("Деньги: {}", economy.money);
 }
