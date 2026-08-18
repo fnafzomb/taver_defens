@@ -1,8 +1,10 @@
+use crate::zombie::*;
 use bevy::prelude::*;
 use component::*;
 use rand::{RngExt, rng};
 
 mod component;
+mod zombie;
 
 fn main() {
     App::new()
@@ -36,10 +38,11 @@ fn main() {
                 spawn_all_zombie,
                 zombie_statistic,
                 death_entity,
-                move_zombie,
+                move_entity,
                 level_up,
                 attack_player,
                 collision_geschoss_zombie,
+                attack_zombie,
             ),
         )
         .run();
@@ -71,22 +74,6 @@ fn command_center(mut commands: Commands) {
     ));
 }
 
-// Статистика
-fn zombie_statistic(count: Res<ZombieCount>, time: Res<Time>, mut timer: Local<Timer>) {
-    if timer.duration().is_zero() {
-        *timer = Timer::from_seconds(5.0, TimerMode::Repeating);
-    }
-    if timer.tick(time.delta()).just_finished() {
-        info!(
-            "Зомби на карте: обычных {}, токсичных {}, толстых {} | всего {}",
-            count.normal,
-            count.toxick,
-            count.fat,
-            count.normal + count.toxick + count.fat
-        );
-    }
-}
-
 // Логика прокачки
 fn level_up(
     mut level: ResMut<ThreateLevel>,
@@ -112,6 +99,7 @@ fn level_up(
 fn geschoss(commands: &mut Commands, player_transform: &Transform, damage: f32) {
     commands.spawn((
         Geschoss,
+        PlayerProjectile,
         Damage { damage },
         Speed { speed: 200.0 },
         Hitbox { y: 1000.0, x: 10.0 },
@@ -158,6 +146,7 @@ fn death_entity_translation(
 fn player_entity(mut commands: Commands) {
     commands.spawn((
         Player,
+        Hitbox { x: 40.0, y: 160.0 },
         Damage { damage: 10.0 },
         Hp {
             max_hp: 100.0,
@@ -181,125 +170,26 @@ fn attack_player(
     }
 }
 
-//Проэктирование зомби
-fn setup_monster_zombie(
-    zombi_type: ZombiType,
-    commands: &mut Commands,
-    zombie_count: &mut ZombieCount,
-) {
-    let (monster, hitbox, speed, damage, hp, reward, color, size, zombie) = match zombi_type {
-        ZombiType::Normal => (
-            Monster,
-            Hitbox { x: 40.0, y: 80.0 },
-            Speed { speed: -10.0 },
-            Damage { damage: 8.0 },
-            Hp {
-                max_hp: 50.0,
-                hp: 50.0,
-            },
-            Reward { money: 10.0 },
-            Color::srgb(0.2, 0.8, 0.2),
-            Vec2::new(40.0, 80.0),
-            zombie_count.normal += 1,
-        ),
-        ZombiType::Toxick => (
-            Monster,
-            Hitbox { x: 40.0, y: 75.0 },
-            Speed { speed: -15.0 },
-            Damage { damage: 11.0 },
-            Hp {
-                max_hp: 40.0,
-                hp: 40.0,
-            },
-            Reward { money: 12.0 },
-            Color::srgb(0.7, 0.2, 0.8),
-            Vec2::new(40.0, 75.0),
-            zombie_count.toxick += 1,
-        ),
-        ZombiType::Fat => (
-            Monster,
-            Hitbox { x: 60.0, y: 78.0 },
-            Speed { speed: -3.0 },
-            Damage { damage: 50.0 },
-            Hp {
-                max_hp: 200.0,
-                hp: 200.0,
-            },
-            Reward { money: 50.0 },
-            Color::srgb(0.6, 0.4, 0.2),
-            Vec2::new(60.0, 78.0),
-            zombie_count.fat += 1,
-        ),
-    };
-    commands.spawn((
-        zombi_type,
-        monster,
-        hitbox,
-        speed,
-        damage,
-        hp,
-        reward,
-        Sprite::from_color(color, size),
-        Transform::from_xyz(800.0, rng().random_range(-100.0..100.0), 1.0),
-        zombie,
-    ));
-}
-
-// Спавн зомби
-fn spawn_all_zombie(
-    mut commands: Commands,
-    mut zombie_count: ResMut<ZombieCount>,
-    time: Res<Time>,
-    mut timer: Local<Timer>,
-    spawn_limit: Res<SpawnLimit>,
-    level: Res<ThreateLevel>,
-) {
-    if timer.duration().is_zero() {
-        *timer = Timer::from_seconds(3.0 / level.spawn_per_second, TimerMode::Repeating);
-    }
-    if timer.tick(time.delta()).just_finished() {
-        if zombie_count.normal < spawn_limit.normal_max {
-            setup_monster_zombie(ZombiType::Normal, &mut commands, &mut zombie_count);
-        }
-        if zombie_count.toxick < spawn_limit.toxick_max {
-            setup_monster_zombie(ZombiType::Toxick, &mut commands, &mut zombie_count);
-        }
-        if zombie_count.fat < spawn_limit.fat_max {
-            setup_monster_zombie(ZombiType::Fat, &mut commands, &mut zombie_count);
-        }
-    }
-}
-
 // Логика передвижение
-fn move_zombie(time: Res<Time>, mut query: Query<(&mut Transform, &Speed)>) {
+pub fn move_entity(
+    time: Res<Time>,
+    mut query: Query<(&mut Transform, &Speed), Without<IsAttacking>>,
+) {
     for (mut transform, speed) in query.iter_mut() {
         transform.translation.x += speed.speed * time.delta_secs();
     }
 }
-// Логика попадние
-fn collision_geschoss_zombie(
-    mut commands: Commands,
-    mut query: Query<(&mut Hp, &Hitbox, &Transform), With<Monster>>,
-    geschoss: Query<(Entity, &Hitbox, &Transform, &Damage), With<Geschoss>>,
-) {
-    for (geschoss_entity, geschoss_hitbox, geschoss_transform, damage) in geschoss.iter() {
-        for (mut hp, zombie_hitbox, zombie_transform) in query.iter_mut() {
-            let x_distance =
-                (geschoss_transform.translation.x - zombie_transform.translation.x).abs();
 
-            let y_distance =
-                (geschoss_transform.translation.y - zombie_transform.translation.y).abs();
+pub fn check_hitbox(
+    hitbox_a: &Hitbox,
+    transform_a: &Transform,
+    hitbox_b: &Hitbox,
+    transform_b: &Transform,
+) -> bool {
+    let x = (transform_a.translation.x - transform_b.translation.x).abs();
+    let y = (transform_a.translation.y - transform_b.translation.y).abs();
 
-            if x_distance < (geschoss_hitbox.x + zombie_hitbox.x) / 2.0
-                && y_distance < (geschoss_hitbox.y + zombie_hitbox.y) / 2.0
-            {
-                hp.hp -= damage.damage;
-                info!("HP зомби: {}", hp.hp);
-                commands.entity(geschoss_entity).despawn();
-                break;
-            }
-        }
-    }
+    x < (hitbox_a.x + hitbox_b.x) / 2.0 && y < (hitbox_a.y + hitbox_b.y) / 2.0
 }
 
 // Логика смерти
