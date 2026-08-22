@@ -24,8 +24,6 @@ pub struct RangeAttack {
     pub range: f32,
 }
 
-
-
 // Компаненты максимального спавна
 #[derive(Resource)]
 pub struct SpawnLimit {

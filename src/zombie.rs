@@ -1,4 +1,4 @@
-use bevy::transform;
+use bevy::ecs::{query, system::entity_command::despawn};
 
 use crate::*;
 
@@ -28,36 +28,6 @@ pub fn geschoss_zombie(commands: &mut Commands, zombi_type: &Transform, damage: 
         Sprite::from_color(Color::srgb(0.0, 0.0, 0.0), Vec2::new(10.0, 5.0)),
         Transform::from_xyz(zombi_type.translation.x, zombi_type.translation.y, 2.9),
     ));
-}
-
-
-
-// атака зомби
-pub fn attack_zombie(
-    mut commands: Commands,
-    monster_query: Query<(Entity, &Transform, &ZombiType, &Damage), With<Monster>>,
-    player_query: Query<&Transform, With<Player>>,
-) {
-    let Ok(player_transform) = player_query.single() else {
-        return;
-    };
-
-    for (entity, monster_transform, zombi_type, damage) in &monster_query {
-        let attack_range = match zombi_type {
-            ZombiType::Normal => 2.0,
-            ZombiType::Toxick => 50.0,
-            ZombiType::Fat => 2.0,
-        };
-
-        let distance =
-            (monster_transform.translation.x - player_transform.translation.x).abs();
-
-
-        if distance <= attack_range {
-        geschoss_zombie(&mut commands, monster_transform, damage.damage);
-        commands.entity(entity).insert(IsAttacking);
-        }
-    }
 }
 
 //Проэктирование зомби
@@ -149,11 +119,14 @@ pub fn spawn_all_zombie(
     }
 }
 
-// Логика попадние
+// Логика попадние по зомби
 pub fn collision_geschoss_zombie(
     mut commands: Commands,
     mut zombies: Query<(Entity, &mut Hp, &Hitbox, &Transform), With<Monster>>,
-    geschoss: Query<(Entity, &Hitbox, &Transform, &Damage), (With<Geschoss>, With<PlayerProjectile>)>,
+    geschoss: Query<
+        (Entity, &Hitbox, &Transform, &Damage),
+        (With<Geschoss>, With<PlayerProjectile>),
+    >,
 ) {
     for (geschoss_entity, geschoss_hitbox, geschoss_transform, damage) in &geschoss {
         let target = zombies
@@ -171,6 +144,81 @@ pub fn collision_geschoss_zombie(
             hp.hp -= damage.damage;
             info!("HP зомби: {}", hp.hp);
             commands.entity(geschoss_entity).despawn();
+        }
+    }
+}
+
+//  Логика поподание по игроку
+pub fn collision_geschoss_player(
+    mut commands: Commands,
+    mut player: Query<(Entity, &mut Hp, &Hitbox, &Transform), With<Player>>,
+    geschoss: Query<
+        (Entity, &Hitbox, &Transform, &Damage),
+        (With<Geschoss>, With<ZombieProjectile>),
+    >,
+) {
+    for (geschoss_entity, geschoss_hitbox, geschoss_transform, damage) in &geschoss {
+        let target = player
+            .iter_mut()
+            .find(|(_, _, player_hitbox, player_transform)| {
+                check_hitbox(
+                    geschoss_hitbox,
+                    geschoss_transform,
+                    player_hitbox,
+                    player_transform,
+                )
+            });
+
+        if let Some((_, mut hp, _, _)) = target {
+            hp.hp -= damage.damage;
+            info!("HP игрока: {}", hp.hp);
+            commands.entity(geschoss_entity).despawn();
+        }
+    }
+}
+
+//  Логика смерти
+pub fn death_player(mut commands: Commands, query: Query<(Entity, &Hp), With<Player>>) {
+    for (entity, hp) in query.iter() {
+        if hp.hp <= 0.0 {
+            commands.entity(entity).despawn()
+        }
+    }
+}
+
+// атака зомби
+pub fn attack_zombie(
+    mut commands: Commands,
+    monster_query: Query<(Entity, &Transform, &ZombiType, &Damage), With<Monster>>,
+    player_query: Query<&Transform, With<Player>>,
+    mut timer: Local<Timer>,
+    time: Res<Time>,
+) {
+    let Ok(player_transform) = player_query.single() else {
+        return;
+    };
+
+    if timer.duration().is_zero() {
+        *timer = Timer::from_seconds(0.3, TimerMode::Repeating)
+    }
+    timer.tick(time.delta());
+
+    if !timer.just_finished() {
+        return;
+    }
+
+    for (entity, monster_transform, zombi_type, damage) in &monster_query {
+        let attack_range = match zombi_type {
+            ZombiType::Normal => 2.0,
+            ZombiType::Toxick => 50.0,
+            ZombiType::Fat => 2.0,
+        };
+
+        let distance = (monster_transform.translation.x - player_transform.translation.x).abs();
+
+        if distance <= attack_range {
+            geschoss_zombie(&mut commands, monster_transform, damage.damage);
+            commands.entity(entity).insert(IsAttacking);
         }
     }
 }

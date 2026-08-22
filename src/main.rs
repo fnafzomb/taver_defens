@@ -43,6 +43,8 @@ fn main() {
                 attack_player,
                 collision_geschoss_zombie,
                 attack_zombie,
+                collision_geschoss_player,
+                death_player,
             ),
         )
         .run();
