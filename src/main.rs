@@ -1,5 +1,5 @@
 use crate::zombie::*;
-use bevy::prelude::*;
+use bevy::{ecs::error::info, prelude::*};
 use component::*;
 use rand::{RngExt, rng};
 
@@ -45,6 +45,7 @@ fn main() {
                 attack_zombie,
                 collision_geschoss_player,
                 death_player,
+                player_respawn,
             ),
         )
         .run();
@@ -114,7 +115,7 @@ fn geschoss(commands: &mut Commands, player_transform: &Transform, damage: f32) 
     ));
 }
 
-//уничтожение сущносте за картой
+// Уничтожение сущносте за картой
 fn death_entity_translation(
     mut commands: Commands,
     mut zombie_count: ResMut<ZombieCount>,
@@ -131,6 +132,11 @@ fn death_entity_translation(
             commands.entity(entity).despawn();
             info!("Сущность пуля удалена");
         }
+        if geschoss.is_some() && transfor.translation.x < -2000.0{
+            commands.entity(entity).despawn();
+            info!("Сущность пуля зомби удалена");
+        }
+
         if monster.is_some() && transfor.translation.x < -2000.0 {
             commands.entity(entity).despawn();
             info!("Сущность зомби удалена");
@@ -144,7 +150,7 @@ fn death_entity_translation(
     }
 }
 
-//создание игрока
+// Создание игрока
 fn player_entity(mut commands: Commands) {
     commands.spawn((
         Player,
@@ -158,8 +164,33 @@ fn player_entity(mut commands: Commands) {
         Transform::from_xyz(-420.0, -40.0, 1.0),
     ));
 }
+// Респавн игрока
+fn player_respawn(
+    mut commands: Commands,
+    mut timer: Local<Timer>,
+    time: Res<Time>,
+    death_player: Query<Entity, With<Player>>,
+    mut attackers: Query<Entity, With<IsAttacking>>
+) {
+    if timer.duration().is_zero() {
+        *timer = Timer::from_seconds(4.0, TimerMode::Once)
+    }
 
-//Создание аттаки
+    if death_player.is_empty() {
+        for entity in attackers.iter_mut() {
+                commands.entity(entity).remove::<IsAttacking>();
+            }
+        timer.tick(time.delta());
+        if timer.is_finished() {
+            
+
+            player_entity(commands);
+            timer.reset();
+        }
+    }
+}
+
+// Создание аттаки
 fn attack_player(
     mouse: Res<ButtonInput<MouseButton>>,
     mut commands: Commands,
@@ -181,7 +212,7 @@ pub fn move_entity(
         transform.translation.x += speed.speed * time.delta_secs();
     }
 }
-
+// Проверка хитбокса
 pub fn check_hitbox(
     hitbox_a: &Hitbox,
     transform_a: &Transform,

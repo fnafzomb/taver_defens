@@ -1,5 +1,3 @@
-use bevy::ecs::{query, system::entity_command::despawn};
-
 use crate::*;
 
 pub fn zombie_statistic(count: Res<ZombieCount>, time: Res<Time>, mut timer: Local<Timer>) {
