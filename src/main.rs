@@ -1,5 +1,5 @@
 use crate::zombie::*;
-use bevy::{ecs::error::info, prelude::*};
+use bevy::{ prelude::*};
 use component::*;
 use rand::{RngExt, rng};
 
@@ -29,11 +29,12 @@ fn main() {
         })
         .add_systems(
             Startup,
-            (camera_game, fon_game, command_center, player_entity),
+            (camera_game, fon_game, command_center, player_entity, wall_entity),
         )
         .add_systems(
             Update,
             (
+                wall_respawn,
                 death_entity_translation,
                 spawn_all_zombie,
                 zombie_statistic,
@@ -43,9 +44,8 @@ fn main() {
                 attack_player,
                 collision_geschoss_zombie,
                 attack_zombie,
-                collision_geschoss_player,
-                death_player,
-                player_respawn,
+                death_wall,
+                collision_geschoss_wall,
             ),
         )
         .run();
@@ -132,7 +132,7 @@ fn death_entity_translation(
             commands.entity(entity).despawn();
             info!("Сущность пуля удалена");
         }
-        if geschoss.is_some() && transfor.translation.x < -2000.0{
+        if geschoss.is_some() && transfor.translation.x < -2000.0 {
             commands.entity(entity).despawn();
             info!("Сущность пуля зомби удалена");
         }
@@ -150,44 +150,26 @@ fn death_entity_translation(
     }
 }
 
+// Создание стены
+fn wall_entity(mut commands: Commands){
+    commands.spawn((
+        Wall,
+        Hitbox{x: 30.0, y: 180.0},
+        Hp{max_hp: 200.0, hp: 200.0},
+        Sprite::from_color(Color::srgb(0.14, 0.09, 0.01), Vec2::new(30.0, 180.0)),
+        Transform::from_xyz(-400.0, -40.0, 1.1)
+    ));
+}
+
 // Создание игрока
 fn player_entity(mut commands: Commands) {
     commands.spawn((
         Player,
         Hitbox { x: 40.0, y: 160.0 },
         Damage { damage: 10.0 },
-        Hp {
-            max_hp: 100.0,
-            hp: 100.0,
-        },
         Sprite::from_color(Color::srgb(1.0, 1.0, 1.0), Vec2::new(40.0, 160.0)),
-        Transform::from_xyz(-420.0, -40.0, 1.0),
+        Transform::from_xyz(-600.0, -40.0, 1.0),
     ));
-}
-// Респавн игрока
-fn player_respawn(
-    mut commands: Commands,
-    mut timer: Local<Timer>,
-    time: Res<Time>,
-    death_player: Query<Entity, With<Player>>,
-    mut attackers: Query<Entity, With<IsAttacking>>
-) {
-    if timer.duration().is_zero() {
-        *timer = Timer::from_seconds(4.0, TimerMode::Once)
-    }
-
-    if death_player.is_empty() {
-        for entity in attackers.iter_mut() {
-                commands.entity(entity).remove::<IsAttacking>();
-            }
-        timer.tick(time.delta());
-        if timer.is_finished() {
-            
-
-            player_entity(commands);
-            timer.reset();
-        }
-    }
 }
 
 // Создание аттаки
@@ -203,6 +185,31 @@ fn attack_player(
     }
 }
 
+// Логика респавна
+fn wall_respawn(
+    mut commands: Commands,
+    mut timer: Local<Timer>,
+    time: Res<Time>,
+    death_wall: Query<Entity, With<Wall>>,
+    mut attackers: Query<Entity, With<IsAttacking>>
+) {
+    if timer.duration().is_zero() {
+        *timer = Timer::from_seconds(4.0, TimerMode::Once)
+    }
+
+    if death_wall.is_empty() {
+        for entity in attackers.iter_mut() {
+                commands.entity(entity).remove::<IsAttacking>();
+            }
+        timer.tick(time.delta());
+        if timer.is_finished() {
+            
+
+            wall_entity(commands);
+            timer.reset();
+        }
+    }
+}
 // Логика передвижение
 pub fn move_entity(
     time: Res<Time>,

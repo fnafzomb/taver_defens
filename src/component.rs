@@ -104,3 +104,7 @@ pub struct Geschoss;
 // Остановка перед аттакай
 #[derive(Component)]
 pub struct IsAttacking;
+
+// Компанент стены
+#[derive(Component)]
+pub struct Wall;
