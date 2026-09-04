@@ -34,9 +34,10 @@ pub fn setup_monster_zombie(
     commands: &mut Commands,
     zombie_count: &mut ZombieCount,
 ) {
-    let (monster, hitbox, speed, damage, hp, reward, color, size, zombie) = match zombi_type {
+    let (monster, range,hitbox, speed, damage, hp, reward, color, size, zombie) = match zombi_type {
         ZombiType::Normal => (
             Monster,
+            RangeAttack{range: 2.0},
             Hitbox { x: 40.0, y: 80.0 },
             Speed { speed: -10.0 },
             Damage { damage: 8.0 },
@@ -51,6 +52,7 @@ pub fn setup_monster_zombie(
         ),
         ZombiType::Toxick => (
             Monster,
+            RangeAttack{range: 50.0},
             Hitbox { x: 40.0, y: 75.0 },
             Speed { speed: -15.0 },
             Damage { damage: 11.0 },
@@ -65,6 +67,7 @@ pub fn setup_monster_zombie(
         ),
         ZombiType::Fat => (
             Monster,
+            RangeAttack{range: 2.0},
             Hitbox { x: 60.0, y: 78.0 },
             Speed { speed: -3.0 },
             Damage { damage: 50.0 },
@@ -81,6 +84,7 @@ pub fn setup_monster_zombie(
     commands.spawn((
         zombi_type,
         monster,
+        range,
         hitbox,
         speed,
         damage,
@@ -146,53 +150,15 @@ pub fn collision_geschoss_zombie(
     }
 }
 
-//  Логика поподание по игроку
-pub fn collision_geschoss_player(
-    mut commands: Commands,
-    mut player: Query<(Entity, &mut Hp, &Hitbox, &Transform), With<Player>>,
-    geschoss: Query<
-        (Entity, &Hitbox, &Transform, &Damage),
-        (With<Geschoss>, With<ZombieProjectile>),
-    >,
-) {
-    for (geschoss_entity, geschoss_hitbox, geschoss_transform, damage) in &geschoss {
-        let target = player
-            .iter_mut()
-            .find(|(_, _, player_hitbox, player_transform)| {
-                check_hitbox(
-                    geschoss_hitbox,
-                    geschoss_transform,
-                    player_hitbox,
-                    player_transform,
-                )
-            });
-
-        if let Some((_, mut hp, _, _)) = target {
-            hp.hp -= damage.damage;
-            info!("HP игрока: {}", hp.hp);
-            commands.entity(geschoss_entity).despawn();
-        }
-    }
-}
-
-//  Логика смерти
-pub fn death_player(mut commands: Commands, query: Query<(Entity, &Hp), With<Player>>) {
-    for (entity, hp) in query.iter() {
-        if hp.hp <= 0.0 {
-            commands.entity(entity).despawn()
-        }
-    }
-}
-
-// атака зомби
+// Стрельба зомби
 pub fn attack_zombie(
     mut commands: Commands,
-    monster_query: Query<(Entity, &Transform, &ZombiType, &Damage), With<Monster>>,
-    player_query: Query<&Transform, With<Player>>,
+    monster_query: Query<(Entity, &Transform, &Damage, &RangeAttack), With<Monster>>,
+    wall_query: Query<&Transform, With<Wall>>,
     mut timer: Local<Timer>,
     time: Res<Time>,
 ) {
-    let Ok(player_transform) = player_query.single() else {
+    let Ok(wall_transform) = wall_query.single() else {
         return;
     };
 
@@ -205,18 +171,49 @@ pub fn attack_zombie(
         return;
     }
 
-    for (entity, monster_transform, zombi_type, damage) in &monster_query {
-        let attack_range = match zombi_type {
-            ZombiType::Normal => 2.0,
-            ZombiType::Toxick => 50.0,
-            ZombiType::Fat => 2.0,
-        };
+    for (entity, monster_transform, damage, range) in &monster_query {
+        let distance = (monster_transform.translation.x - wall_transform.translation.x).abs();
 
-        let distance = (monster_transform.translation.x - player_transform.translation.x).abs();
-
-        if distance <= attack_range {
+        if distance <= range.range {
             geschoss_zombie(&mut commands, monster_transform, damage.damage);
             commands.entity(entity).insert(IsAttacking);
+        }
+    }
+}
+
+// Логика попадания от зомби пуль по стене
+pub fn collision_geschoss_wall (
+    mut commands: Commands,
+    mut wall: Query<(Entity, &mut Hp, &Hitbox, &Transform), With<Wall>>,
+    geschoss: Query<
+            (Entity, &Hitbox, &Transform, &Damage),
+            (With<Geschoss>, With<ZombieProjectile>),
+        >
+){
+    for (geschoss_entity, geschoss_hitbox, geschoss_transform, damage) in &geschoss {
+        let target = wall
+            .iter_mut()
+            .find(|(_, _, wall_hitbox, wall_transform)| {
+                check_hitbox(
+                    geschoss_hitbox,
+                    geschoss_transform,
+                    wall_hitbox,
+                    wall_transform,
+                )
+            });
+        if let Some((_, mut hp, _, _)) = target {
+            hp.hp -= damage.damage;
+            info!("HP стены: {}", hp.hp);
+            commands.entity(geschoss_entity).despawn();
+        }
+    }
+}
+
+// Логика разрушение стены
+pub fn death_wall(mut commands: Commands, query: Query<(Entity, &Hp), With<Wall>>) {
+    for (entity, hp) in query.iter() {
+        if hp.hp <= 0.0 {
+            commands.entity(entity).despawn()
         }
     }
 }
