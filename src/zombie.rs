@@ -15,10 +15,9 @@ pub fn zombie_statistic(count: Res<ZombieCount>, time: Res<Time>, mut timer: Loc
     }
 }
 
-//созднаие снаряда зомби
-pub fn geschoss_zombie(commands: &mut Commands, zombi_type: &Transform, damage: f32) {
+pub fn bullet_zombie(commands: &mut Commands, zombi_type: &Transform, damage: f32) {
     commands.spawn((
-        Geschoss,
+        Bullet,
         ZombieProjectile,
         Damage { damage },
         Speed { speed: -200.0 },
@@ -28,16 +27,16 @@ pub fn geschoss_zombie(commands: &mut Commands, zombi_type: &Transform, damage: 
     ));
 }
 
-//Проэктирование зомби
 pub fn setup_monster_zombie(
     zombi_type: ZombiType,
     commands: &mut Commands,
     zombie_count: &mut ZombieCount,
 ) {
-    let (monster, range,hitbox, speed, damage, hp, reward, color, size, zombie) = match zombi_type {
+    let (monster, range, hitbox, speed, damage, hp, reward, color, size, zombie) = match zombi_type
+    {
         ZombiType::Normal => (
             Monster,
-            RangeAttack{range: 2.0},
+            RangeAttack { range: 2.0 },
             Hitbox { x: 40.0, y: 80.0 },
             Speed { speed: -10.0 },
             Damage { damage: 8.0 },
@@ -52,7 +51,7 @@ pub fn setup_monster_zombie(
         ),
         ZombiType::Toxick => (
             Monster,
-            RangeAttack{range: 50.0},
+            RangeAttack { range: 50.0 },
             Hitbox { x: 40.0, y: 75.0 },
             Speed { speed: -15.0 },
             Damage { damage: 11.0 },
@@ -67,7 +66,7 @@ pub fn setup_monster_zombie(
         ),
         ZombiType::Fat => (
             Monster,
-            RangeAttack{range: 2.0},
+            RangeAttack { range: 2.0 },
             Hitbox { x: 60.0, y: 78.0 },
             Speed { speed: -3.0 },
             Damage { damage: 50.0 },
@@ -96,14 +95,13 @@ pub fn setup_monster_zombie(
     ));
 }
 
-// Спавн зомби
 pub fn spawn_all_zombie(
     mut commands: Commands,
     mut zombie_count: ResMut<ZombieCount>,
     time: Res<Time>,
     mut timer: Local<Timer>,
     spawn_limit: Res<SpawnLimit>,
-    level: Res<ThreateLevel>,
+    level: Res<ThreatLevel>,
 ) {
     if timer.duration().is_zero() {
         *timer = Timer::from_seconds(3.0 / level.spawn_per_second, TimerMode::Repeating);
@@ -112,7 +110,7 @@ pub fn spawn_all_zombie(
         if zombie_count.normal < spawn_limit.normal_max {
             setup_monster_zombie(ZombiType::Normal, &mut commands, &mut zombie_count);
         }
-        if zombie_count.toxick < spawn_limit.toxick_max {
+        if zombie_count.toxick < spawn_limit.toxic_max {
             setup_monster_zombie(ZombiType::Toxick, &mut commands, &mut zombie_count);
         }
         if zombie_count.fat < spawn_limit.fat_max {
@@ -121,36 +119,6 @@ pub fn spawn_all_zombie(
     }
 }
 
-// Логика попадние по зомби
-pub fn collision_geschoss_zombie(
-    mut commands: Commands,
-    mut zombies: Query<(Entity, &mut Hp, &Hitbox, &Transform), With<Monster>>,
-    geschoss: Query<
-        (Entity, &Hitbox, &Transform, &Damage),
-        (With<Geschoss>, With<PlayerProjectile>),
-    >,
-) {
-    for (geschoss_entity, geschoss_hitbox, geschoss_transform, damage) in &geschoss {
-        let target = zombies
-            .iter_mut()
-            .find(|(_, _, zombie_hitbox, zombie_transform)| {
-                check_hitbox(
-                    geschoss_hitbox,
-                    geschoss_transform,
-                    zombie_hitbox,
-                    zombie_transform,
-                )
-            });
-
-        if let Some((_, mut hp, _, _)) = target {
-            hp.hp -= damage.damage;
-            info!("HP зомби: {}", hp.hp);
-            commands.entity(geschoss_entity).despawn();
-        }
-    }
-}
-
-// Стрельба зомби
 pub fn attack_zombie(
     mut commands: Commands,
     monster_query: Query<(Entity, &Transform, &Damage, &RangeAttack), With<Monster>>,
@@ -175,45 +143,56 @@ pub fn attack_zombie(
         let distance = (monster_transform.translation.x - wall_transform.translation.x).abs();
 
         if distance <= range.range {
-            geschoss_zombie(&mut commands, monster_transform, damage.damage);
+            bullet_zombie(&mut commands, monster_transform, damage.damage);
             commands.entity(entity).insert(IsAttacking);
         }
     }
 }
 
-// Логика попадания от зомби пуль по стене
-pub fn collision_geschoss_wall (
+pub fn collision_bullet_zombie(
     mut commands: Commands,
-    mut wall: Query<(Entity, &mut Hp, &Hitbox, &Transform), With<Wall>>,
-    geschoss: Query<
-            (Entity, &Hitbox, &Transform, &Damage),
-            (With<Geschoss>, With<ZombieProjectile>),
-        >
-){
-    for (geschoss_entity, geschoss_hitbox, geschoss_transform, damage) in &geschoss {
-        let target = wall
+    mut zombies: Query<(Entity, &mut Hp, &Hitbox, &Transform), With<Monster>>,
+    bullet: Query<(Entity, &Hitbox, &Transform, &Damage), (With<Bullet>, With<PlayerProjectile>)>,
+) {
+    for (bullet_entity, bullet_hitbox, bullet_transform, damage) in &bullet {
+        let target = zombies
             .iter_mut()
-            .find(|(_, _, wall_hitbox, wall_transform)| {
+            .find(|(_, _, zombie_hitbox, zombie_transform)| {
                 check_hitbox(
-                    geschoss_hitbox,
-                    geschoss_transform,
-                    wall_hitbox,
-                    wall_transform,
+                    bullet_hitbox,
+                    bullet_transform,
+                    zombie_hitbox,
+                    zombie_transform,
                 )
             });
+
         if let Some((_, mut hp, _, _)) = target {
             hp.hp -= damage.damage;
-            info!("HP стены: {}", hp.hp);
-            commands.entity(geschoss_entity).despawn();
+            info!("HP зомби: {}", hp.hp);
+            commands.entity(bullet_entity).despawn();
         }
     }
 }
 
-// Логика разрушение стены
-pub fn death_wall(mut commands: Commands, query: Query<(Entity, &Hp), With<Wall>>) {
-    for (entity, hp) in query.iter() {
+// Логика смерти
+pub fn death_zombie_entity(
+    mut commands: Commands,
+    mut zombie_count: ResMut<ZombieCount>,
+    mut threat_level: ResMut<ThreatLevel>,
+    mut money: ResMut<Money>,
+    query: Query<(Entity, &Hp, &ZombiType, &Reward), With<Monster>>,
+) {
+    for (entity, hp, zombie_type, reward) in query.iter() {
         if hp.hp <= 0.0 {
-            commands.entity(entity).despawn()
+            match zombie_type {
+                ZombiType::Normal => zombie_count.normal -= 1,
+                ZombiType::Toxick => zombie_count.toxick -= 1,
+                ZombiType::Fat => zombie_count.fat -= 1,
+            }
+            money.money += reward.money;
+            threat_level.killed += 1;
+            info!("денег на счету {}", money.money);
+            commands.entity(entity).despawn();
         }
     }
 }
