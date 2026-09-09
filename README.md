@@ -30,11 +30,3 @@ The codebase is organized into independent ECS modules:
 * `wall` — Defensive barrier mechanics, projectile collision, and respawn handling.
 * `component` — Centralized storage for all components and resources (HP, Damage, Speed, Hitbox).
 * `util` — AABB collision detection, entity movement systems, and level-up progression logic.
-
----
-
-## 📝 Roadmap
-
-- [ ] Connect the main menu system (`PlayButton`, `SettingsButton`, `QuitButton`)
-- [ ] Integrate full graphical assets and custom sprites for all entities
-- [ ] Implement an upgrade shop to boost weapon damage and wall durability using gold
