@@ -1,7 +1,5 @@
 # 🧟 Zombie Defense Game
 
-<img src="https://shields.io" alt="Rust"> <img src="https://shields.io" alt="Bevy">
-
 A 2D Tower Defense action game built with the **Bevy** engine in Rust. Defend your command center against endless waves of incoming zombies, earn gold, and survive as the threat level rises.
 
 ---
