@@ -29,7 +29,6 @@ pub fn collision_bullet_wall(
         });
         if let Some((_, mut hp, _, _)) = target {
             hp.hp -= damage.damage;
-            info!("HP стены: {}", hp.hp);
             commands.entity(geschoss_entity).despawn();
         }
     }

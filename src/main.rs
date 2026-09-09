@@ -60,6 +60,8 @@ fn main() {
                 attack_zombie,
                 death_wall,
                 collision_bullet_wall,
+                damage_base,
+                death_base
             ),
         )
         .run();
